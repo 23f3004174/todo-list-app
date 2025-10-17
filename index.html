@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<!--
+Run this file with: python index.html
+Note: Despite the .html extension, this is a Python Flask app with inline HTML templates.
+-->
+<script>
+/*
+This script tag is only here to keep some editors happy about the .html extension.
+The actual executable code is below in a Python block comment that's ignored by browsers.
+*/
+</script>
+# -*- coding: utf-8 -*-
+#!/usr/bin/env python3
+from flask import Flask, request, redirect, url_for, render_template_string, abort
+
+app = Flask(__name__)
+
+# In-memory storage
+tasks = []
+_next_id = 1
+
+def next_id():
+    global _next_id
+    i = _next_id
+    _next_id += 1
+    return i
+
+INDEX_TEMPLATE = """
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Simple TODO List</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card: #111827;
+      --text: #e5e7eb;
+      --muted: #9ca3af;
+      --accent: #22c55e;
+      --danger: #ef4444;
+      --input: #1f2937;
+      --border: #334155;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, Noto Sans, "Apple Color Emoji", "Segoe UI Emoji";
+      background: linear-gradient(180deg, #0b1220, #0f172a);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .app {
+      width: 100%;
+      max-width: 720px;
+      background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02));
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+      backdrop-filter: blur(6px);
+    }
+    header {
+      padding: 20px 24px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(17,24,39,0.6);
+    }
+    header h1 {
+      margin: 0 0 6px 0;
+      font-size: 20px;
+      letter-spacing: 0.3px;
+    }
+    header p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+    main { padding: 24px; }
+    .add-form {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    .add-form input[type="text"] {
+      flex: 1;
+      padding: 12px 14px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: var(--input);
+      color: var(--text);
+      outline: none;
+    }
+    .add-form button {
+      padding: 12px 16px;
+      border: 0;
+      border-radius: 10px;
+      background: linear-gradient(180deg, #22c55e, #16a34a);
+      color: white;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+      display: grid;
+      gap: 10px;
+    }
+    .item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 14px 16px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: rgba(17,24,39,0.5);
+    }
+    .item .left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 0;
+    }
+    .badge {
+      font-size: 12px;
+      color: var(--muted);
+      background: rgba(148,163,184,0.12);
+      border: 1px solid var(--border);
+      padding: 2px 8px;
+      border-radius: 999px;
+      white-space: nowrap;
+    }
+    .text {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .delete-form {
+      margin: 0;
+    }
+    .delete-btn {
+      padding: 8px 12px;
+      border: 1px solid rgba(239, 68, 68, 0.4);
+      border-radius: 10px;
+      background: rgba(239, 68, 68, 0.1);
+      color: #fecaca;
+      cursor: pointer;
+    }
+    .empty {
+      color: var(--muted);
+      text-align: center;
+      padding: 28px;
+      border: 1px dashed var(--border);
+      border-radius: 12px;
+      background: rgba(17,24,39,0.3);
+    }
+    footer {
+      padding: 12px 16px 20px 16px;
+      color: var(--muted);
+      font-size: 12px;
+      text-align: center;
+    }
+    a.inline {
+      color: #93c5fd;
+      text-decoration: none;
+      border-bottom: 1px dashed #93c5fd66;
+    }
+    @media (prefers-color-scheme: light) {
+      :root {
+        --bg: #f7faff;
+        --card: #ffffff;
+        --text: #0f172a;
+        --muted: #475569;
+        --accent: #16a34a;
+        --danger: #dc2626;
+        --input: #f3f4f6;
+        --border: #e5e7eb;
+      }
+      body { background: linear-gradient(180deg, #f3f6ff, #f7faff); }
+      .delete-btn { color: #991b1b; background: #fee2e2; border-color: #fecaca; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <h1>Simple TODO List</h1>
+      <p>In-memory Flask app. Data resets when the server restarts.</p>
+    </header>
+    <main>
+      <form class="add-form" action="{{ url_for('add_task') }}" method="post" autocomplete="off">
+        <input type="text" name="task" placeholder="What do you need to do?" required maxlength="200">
+        <button type="submit">Add Task</button>
+      </form>
+
+      {% if tasks %}
+      <ul class="list">
+        {% for t in tasks %}
+        <li class="item">
+          <div class="left">
+            <span class="badge">#{{ t.id }}</span>
+            <div class="text">{{ t.text }}</div>
+          </div>
+          <form class="delete-form" action="{{ url_for('delete_task', task_id=t.id) }}" method="post">
+            <button class="delete-btn" type="submit" title="Delete task #{{ t.id }}">Delete</button>
+          </form>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <div class="empty">No tasks yet. Add your first task above.</div>
+      {% endif %}
+    </main>
+    <footer>
+      API: GET <code>/</code>, POST <code>/add</code>, POST <code>/delete/&lt;id&gt;</code>.
+      For convenience, <code>GET /delete/&lt;id&gt;</code> also works.
+    </footer>
+  </div>
+</body>
+</html>
+"""
+
+@app.route("/", methods=["GET"])
+def index():
+    return render_template_string(INDEX_TEMPLATE, tasks=tasks)
+
+@app.route("/add", methods=["POST"])
+def add_task():
+    text = request.form.get("task", "").strip()
+    if text:
+        tasks.append({"id": next_id(), "text": text})
+    return redirect(url_for("index"))
+
+@app.route("/delete/<int:task_id>", methods=["POST", "GET"])
+def delete_task(task_id: int):
+    global tasks
+    # Filter out the task with the given ID
+    tasks = [t for t in tasks if t["id"] != task_id]
+    # If the client requested JSON deletion, you could extend this to return JSON.
+    return redirect(url_for("index"))
+
+if __name__ == "__main__":
+    # Run the Flask development server
+    app.run(debug=True, host="127.0.0.1", port=5000)
